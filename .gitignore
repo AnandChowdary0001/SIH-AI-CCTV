@@ -1,0 +1,85 @@
+# ============================================
+# SIH AI CCTV PROJECT - GITIGNORE
+# ============================================
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# IDE / Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Operating system
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Logs
+*.log
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Testing / cache
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# YOLO / generated output
+runs/
+*.cache
+
+# Model weights
+*.pt
+*.onnx
+*.engine
+*.weights
+
+# Local/private face data
+data/
+reference/
+src/data/
+src/data/face_database.npz
+src/data/watchlist.json
+
+# Generated Python packages
+*.egg-info/
+dist/
+build/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+
+# Development backups
+*_backup.py
+*_backup*.py
+*_old.py
+*_old*.py
+*_before_*.py
+*_before_*.py
+
+# Experimental patch/fix scripts
+*patch*.py
+*fix*.py
+
+# Development verification scripts
+*verify*.py
+phase3A_verify_dashboard.py
