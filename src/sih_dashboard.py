@@ -5,6 +5,7 @@ from ultralytics import YOLO
 from insightface.app import FaceAnalysis
 
 import json
+import requests
 # ============================================================
 # PHASE 3B-1 VIRTUAL BORDER
 # ============================================================
@@ -673,6 +674,36 @@ print("=" * 70)
 # MAIN LOOP
 # ============================================================
 
+# ============================================================
+# FASTAPI LIVE CAMERA UPDATE
+# ============================================================
+API_UPDATE_URL = "http://127.0.0.1:8000/api/camera/update"
+API_UPDATE_INTERVAL = 0.5
+last_api_update = 0.0
+
+
+def send_camera_data(detections, faces, recognized, unknown, fps):
+    data = {
+        "camera_id": int(CAMERA_ID),
+        "name": "Laptop Camera" if CAMERA_ID == 0 else f"Camera {CAMERA_ID}",
+        "status": "online",
+        "detections": int(detections),
+        "faces": int(faces),
+        "recognized": int(recognized),
+        "unknown": int(unknown),
+        "fps": round(float(fps), 1),
+    }
+
+    try:
+        requests.post(
+            API_UPDATE_URL,
+            json=data,
+            timeout=0.2
+        )
+    except requests.RequestException:
+        pass
+
+
 frame_count = 0
 
 fps_start = time.time()
@@ -813,271 +844,10 @@ while True:
 
 
     # ========================================================
-    # DRAW YOLO OBJECTS
+    # YOLO VISUAL BOXES DISABLED
+    # YOLO + ByteTrack still run above for tracking/border crossing.
+    # Face boxes below are the only person boxes displayed.
     # ========================================================
-
-    if results:
-
-        result = results[0]
-
-        if result.boxes is not None:
-
-            boxes = result.boxes
-
-            xyxy = boxes.xyxy.cpu().numpy()
-
-            classes = boxes.cls.cpu().numpy()
-
-            confidences = boxes.conf.cpu().numpy()
-
-
-            if boxes.id is not None:
-
-                track_ids = (
-                    boxes.id
-                    .cpu()
-                    .numpy()
-                )
-
-            else:
-
-                track_ids = None
-
-
-            # ------------------------------------------------
-            # LOOP THROUGH OBJECTS
-            # ------------------------------------------------
-
-            for i in range(len(xyxy)):
-
-                x1, y1, x2, y2 = (
-                    xyxy[i].astype(int)
-                )
-
-                class_id = int(
-                    classes[i]
-                )
-
-                confidence = float(
-                    confidences[i]
-                )
-
-
-                # YOLO class name
-
-                class_name = result.names[
-                    class_id
-                ]
-
-
-                # ------------------------------------------------
-                # PHASE 3B-2 BORDER CROSSING
-                # ------------------------------------------------
-
-                if (
-                    class_name == "person"
-                    and len(border_points) == 2
-                    and track_ids is not None
-                ):
-                    center_x = (
-                        int(x1) + int(x2)
-                    ) // 2
-
-                    center_y = (
-                        int(y1) + int(y2)
-                    ) // 2
-
-                    current_side_value = border_side(
-                        (center_x, center_y),
-                        border_points[0],
-                        border_points[1],
-                    )
-
-                    side_deadband = 3.0
-
-                    if current_side_value > side_deadband:
-                        current_side = 1
-                    elif current_side_value < -side_deadband:
-                        current_side = -1
-                    else:
-                        current_side = 0
-
-                    if current_side != 0:
-                        previous_side = border_track_sides.get(
-                            track_id
-                        )
-
-                        if (
-                            previous_side is not None
-                            and previous_side != 0
-                            and previous_side != current_side
-                        ):
-                            now = time.time()
-
-                            previous_crossing = (
-                                border_track_last_crossing.get(
-                                    track_id,
-                                    0
-                                )
-                            )
-
-                            if (
-                                now - previous_crossing
-                                >= BORDER_CROSSING_COOLDOWN
-                            ):
-                                direction = (
-                                    "SIDE_A_TO_SIDE_B"
-                                    if previous_side > 0
-                                    else "SIDE_B_TO_SIDE_A"
-                                )
-
-                                border_track_last_crossing[
-                                    track_id
-                                ] = now
-
-                                border_crossing_event(
-                                    frame=frame.copy(),
-                                    track_id=track_id,
-                                    person_name="UNKNOWN",
-                                    confidence=confidence * 100,
-                                    camera_id=CAMERA_ID,
-                                    direction=direction,
-                                    bbox=(x1, y1, x2, y2),
-                                )
-
-                        border_track_sides[
-                            track_id
-                        ] = current_side
-
-                # ------------------------------------------------
-                # TRACK ID
-                # ------------------------------------------------
-
-                if track_ids is not None:
-
-                    track_id = int(
-                        track_ids[i]
-                    )
-
-                    label = (
-                        f"{class_name} "
-                        f"ID:{track_id} "
-                        f"{confidence * 100:.0f}%"
-                    )
-
-                else:
-
-                    label = (
-                        f"{class_name} "
-                        f"{confidence * 100:.0f}%"
-                    )
-
-
-                # ------------------------------------------------
-                # OBJECT BOX
-                # ------------------------------------------------
-
-                cv2.rectangle(
-
-                    frame,
-
-                    (x1, y1),
-
-                    (x2, y2),
-
-                    (255, 0, 0),
-
-                    2
-
-                )
-
-
-                # ------------------------------------------------
-                # LABEL SIZE
-                # ------------------------------------------------
-
-                (
-                    text_width,
-                    text_height
-                ), baseline = cv2.getTextSize(
-
-                    label,
-
-                    cv2.FONT_HERSHEY_SIMPLEX,
-
-                    0.55,
-
-                    2
-
-                )
-
-
-                label_top = max(
-
-                    0,
-
-                    y1 -
-                    text_height -
-                    baseline -
-                    8
-
-                )
-
-
-                # ------------------------------------------------
-                # LABEL BACKGROUND
-                # ------------------------------------------------
-
-                cv2.rectangle(
-
-                    frame,
-
-                    (
-                        x1,
-                        label_top
-                    ),
-
-                    (
-                        x1 +
-                        text_width +
-                        8,
-
-                        y1
-                    ),
-
-                    (255, 0, 0),
-
-                    -1
-
-                )
-
-
-                # ------------------------------------------------
-                # LABEL TEXT
-                # ------------------------------------------------
-
-                cv2.putText(
-
-                    frame,
-
-                    label,
-
-                    (
-                        x1 + 4,
-
-                        y1 - 6
-                    ),
-
-                    cv2.FONT_HERSHEY_SIMPLEX,
-
-                    0.55,
-
-                    (255, 255, 255),
-
-                    2
-
-                )
-
 
     # ========================================================
     # INSIGHTFACE FACE DETECTION
@@ -1181,9 +951,9 @@ while True:
                     f"{name} {confidence:.1f}%"
                 )
 
-                box_color = (0, 0, 255)
-                box_thickness = 3
-                label_color = (0, 0, 255)
+                box_color = (0, 0, 140)
+                box_thickness = 1
+                label_color = (0, 0, 140)
 
             else:
 
@@ -1192,9 +962,9 @@ while True:
                 else:
                     label = f"{name} {confidence:.1f}%"
 
-                box_color = (255, 0, 0)
-                box_thickness = 2
-                label_color = (255, 0, 0)
+                box_color = (140, 0, 0)
+                box_thickness = 1
+                label_color = (140, 0, 0)
 
 
             # ------------------------------------------------
@@ -1263,6 +1033,37 @@ while True:
                 "Face processing error:",
                 e
             )
+
+
+    # ========================================================
+    # SEND LIVE CAMERA DATA TO FASTAPI
+    # ========================================================
+
+    if current_time - last_api_update >= API_UPDATE_INTERVAL:
+
+        detection_count = 0
+
+        try:
+            if results:
+                result = results[0]
+
+                if result.boxes is not None and result.boxes.cls is not None:
+                    classes = result.boxes.cls.cpu().numpy()
+                    detection_count = sum(
+                        1 for cls in classes if int(cls) == 0
+                    )
+        except Exception:
+            detection_count = 0
+
+        send_camera_data(
+            detections=detection_count,
+            faces=len(faces),
+            recognized=recognized_count,
+            unknown=unknown_count,
+            fps=fps
+        )
+
+        last_api_update = current_time
 
 
     # ========================================================
